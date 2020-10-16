@@ -14,8 +14,12 @@
     function startScript() {
         // Work both with GreaseMonkey and TamperMonkey
         const xmlHttpRequest = window.GM_xmlhttpRequest || GM.xmlHttpRequest
+        
         const OCTET_STREAM = "application/octet-stream"
         const downloadButton = createDownloadButton()
+
+        // Lessons are groups of lectures
+        const lessons = []
 
         function createDownloadButton() {
             const result = document.createElement("button")
@@ -25,7 +29,18 @@
             return result
         }
 
-        
+        NodeList.prototype.map = function(f) {
+            const result = []
+            this.forEach((node) => {
+                result.push(f(node))
+            })
+            return result
+        }
+
+        String.prototype.contains = function(str) {
+            return this.indexOf(str) > -1
+        }
+
         function main() {
             const videoPageRegex = /^https:\/\/www.coursera.org\/learn\/[^/]+\/lecture\/\w+\/[\w-]+$/
             const readingPageRegex = /^https:\/\/www.coursera.org\/learn\/[^/]+\/supplement\/\w+\/[\w-]+$/
@@ -50,7 +65,46 @@
         }
 
         function getGroupName() {
-            return getBreadcrumbs()[1].querySelector("span").innerHTML
+            return getBreadcrumbs()[1].querySelector("span").innerText
+        }
+
+        function getLectureName() {
+            return getBreadcrumbs()[2].innerText
+        }
+
+        function getLectureIndex(lectureName, lessonIndex) {
+            const lectures = lessons[lessonIndex].div.querySelectorAll(".item-list ul li")
+
+            for (var i = 0, I = lectures.length; i < I; i++) {
+                var liText = lectures[i].innerText
+                if (liText.contains(lectureName)) {
+                    return i;
+                }
+            }
+            throw "Lecture " + lectureName + " not found in lesson " + lessonIndex
+        }
+        
+        function getLessonName(lectureName) {
+            for (var i = 0, I = lessons.length; i < I; i++) {
+                var lectures = lessons[i].div.querySelector(".item-list")
+                if (lectures != null) {
+                    lectures = lectures.innerText
+                    if (lectures.contains(lectureName)) {
+                        return lessons[i].name
+                    }
+                }
+            }
+            throw "Lecture " + lectureName + " not found among lessons"
+        }
+
+
+        function getLessonIndex(lessonName) {
+            for (var i = 0, I = lessons.length; i < I; i++) {
+                if (lessons[i].name == lessonName) {
+                    return i
+                }
+            }
+            throw "Lesson not found with name " + lessonName
         }
 
         function formatFileName(str) {
@@ -58,6 +112,15 @@
             return str
                 .replace(/[,/\:*?""<>|]/g, replaceChar) // forbidden characters
                 .replace(/^\./, replaceChar) // cannot start with dot (.)
+        }
+
+        function formatNumberInFileName(n) {
+            const places = 2
+            var result = n.toString()
+            while (result.length < places) {
+                result = "0" + result
+            }
+            return result
         }
 
         function videoPage() {
@@ -85,17 +148,20 @@
                 const downloadDropdownButton = downloadDropdownContainer.getElementsByTagName('button')[0]
                 downloadDropdownButton.click()
 
+                const groupName = getGroupName()
+                const lectureName = formatLectureName(getLectureName())
+                const lessonName = getLessonName(lectureName)
+                const lessonIndex = getLessonIndex(lessonName)
+                const lessonNumber = formatNumberInFileName(1 + lessonIndex)
+                const lectureNumber = formatNumberInFileName(1 + getLectureIndex(lectureName, lessonIndex))
+
                 setTimeout(() => {
                     const items = downloadDropdownContainer.querySelectorAll('a.menuitem')
                     for(var i = 0, I = items.length; i < I; i++) {
-                        var anchor = items[i]
-                        var resourceUrl = anchor.href.trim()
-                        var fileExtension = guessResourceExtension(resourceUrl)
-                        var videoName = document.querySelector('h4').childNodes[0].textContent
-                        var lessonName = formatLessonName(videoName)
-                        
-                        var anchorTexts = anchor.querySelectorAll('span')
-                        var resourceName = anchorTexts[0].innerText
+                        const anchor = items[i]
+                        const resourceUrl = anchor.href.trim()
+                        const fileExtension = guessResourceExtension(resourceUrl)
+                        var resourceName = anchor.querySelectorAll('span')[0].innerText
 
                         // Give the video and the subtitle the same name so video players pick the subtitle automatically
                         if(fileExtension == 'mp4' || fileExtension == 'vtt') {
@@ -106,7 +172,12 @@
                         if (resourceName.endsWith('.' + fileExtension)) {
                             resourceName = resourceName.substr(0, resourceName.length - 1 - fileExtension.length)
                         }
-                        const fileName = formatFileName(getGroupName() + " - " + lessonName + ' - ' + resourceName + "." + fileExtension)
+                        const fileName = formatFileName(
+                            groupName + " - " + 
+                            lessonNumber + " - " + lessonName + " - " + 
+                            lectureNumber + " - " + lectureName + ' - ' + 
+                            resourceName + "." + fileExtension
+                        )
                         downloadResources.push({ url: resourceUrl, fileName: fileName })
                     }
 
@@ -124,7 +195,7 @@
                         }
                     } else {
                         // Very likely the connection is too slow. Retry until stuff is ready
-                        setTimeout(() => { getDownloadResources() }, 10_000)
+                        setTimeout(() => { getDownloadResources() }, 10000)
                     }
                 }, 0)
             }
@@ -158,7 +229,7 @@
                 })
             }
 
-            function formatLessonName(str) {
+            function formatLectureName(str) {
                 return str.replace(/\(\d+:\d*:?\d*\)\s*$/, "").trim()
             }
 
@@ -173,6 +244,15 @@
                 // AJAX-based UI takes some time to generate. Wait for it
                 if (injectButton()) {
                     setTimeout(() => { getDownloadResources() }, 2000)
+                    const lessonDivs = document.querySelectorAll(".rc-CollapsibleLesson")
+                    const lessonNames = lessonDivs.map((div) => div.querySelector("button").innerText)
+                    
+                    for (var i = 0, I = lessonDivs.length; i < I; i++) {
+                        lessons.push({
+                            name: lessonNames[i],
+                            div: lessonDivs[i]
+                        })
+                    }
                 } else {
                     setTimeout(doTheJob, 1000)
                 }
@@ -187,8 +267,18 @@
             function downloadText(textContainer) {
                 const finalHtml = "<html><body>" + textContainer.innerHTML + "</body></html>"
                 const blob = new Blob([finalHtml], { type: OCTET_STREAM })
-                const lessonName = getBreadcrumbs()[2].innerText
-                const fileName = formatFileName(getGroupName() + " - " + lessonName + ".html")
+
+                const lectureName = formatLectureName(getLectureName())
+                const lessonName = getLessonName(lectureName)
+                const lessonIndex = getLessonIndex(lessonName)
+                const lessonNumber = formatNumberInFileName(1 + lessonIndex)
+                const lectureNumber = formatNumberInFileName(1 + getLectureIndex(lectureName, lessonIndex))
+
+                const fileName = formatFileName(
+                    getGroupName() + " - " + 
+                    lessonNumber + " - " + lessonName + " - " + 
+                    lectureNumber + " - " + lectureName + ' - ' + ".html"
+                )
                 downloadBlob(blob, fileName)
             }
 
