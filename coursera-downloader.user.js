@@ -8,6 +8,8 @@
 // @match       https://www.coursera.org/learn/*/home/week/*
 // @match       https://www.coursera.org/learn/*/lecture/*/*
 // @match       https://www.coursera.org/learn/*/supplement/*/*
+// @match       https://www.coursera.org/learn/*/peer/*/reflective-essay-about-a-learning-challenge
+// @match       https://www.coursera.org/learn/*/peer/*/reflective-essay-about-a-learning-challenge/give-feedback
 // @grant       GM_xmlhttpRequest
 // @grant       GM.xmlHttpRequest
 // @version     1.0
@@ -60,9 +62,9 @@
             } else if (homePageRegex.test(url)) {
                 homePage()
             } else if (examPageRegex.test(url)) {
-                examPage()
+                skipPage()
             } else {
-                alert("URL mismatch")
+                skipPage()
             }
         }
 
@@ -94,9 +96,11 @@
             return getBreadcrumbs()[1].querySelector("span").innerText
         }
 
-        function populateLessons() {
+        function setupLessons() {
             const lessonDivs = document.querySelectorAll(".rc-CollapsibleLesson")
-            const lessonNames = lessonDivs.map((div) => div.querySelector("button").innerText)
+            const lessonButtons = lessonDivs.map((div) => div.querySelector("button"))
+            const lessonLectures = lessonDivs.map((div) => div.querySelector(".item-list ul"))
+            const lessonNames = lessonButtons.map((button) => button.innerText)
             
             for (var i = 0, I = lessonDivs.length; i < I; i++) {
                 lessons.push({
@@ -105,6 +109,14 @@
                 })
             }
 
+            // Expand the lessons that are now collapsed
+            console.log(lessonButtons)
+            console.log(lessonLectures)
+            for (var i = 0, I = lessonLectures.length; i < I; i++) {
+                if (!lessonLectures[i]) {
+                    lessonButtons[i].click()
+                }
+            }
         }
 
         function getLectureName() {
@@ -282,7 +294,7 @@
                 // AJAX-based UI takes some time to generate. Wait for it
                 if (injectButton()) {
                     setTimeout(() => { getDownloadResources() }, 2000)
-                    populateLessons()
+                    setupLessons()
                 } else {
                     setTimeout(doTheJob, 1000)
                 }
@@ -325,7 +337,7 @@
                 const textContainer = document.querySelector(containerSelector) 
                 if (textContainer) {
                     injectButton(textContainer)
-                    populateLessons()
+                    setupLessons()
                     downloadText(textContainer)
                 } else {
                     setTimeout(doTheJob, 1000)      
@@ -373,7 +385,7 @@
             setTimeout(doTheJob, 3000)
         }
 
-        function examPage() {
+        function skipPage() {
             function doTheJob() {
                 // AJAX-based UI takes some time to generate. Wait for it
                 if (!goToNext()) {
