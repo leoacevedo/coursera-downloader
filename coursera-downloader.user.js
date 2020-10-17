@@ -3,6 +3,7 @@
 // @author      Leonardo Acevedo (leo.acevedo@gmail.com)
 // @namespace   https://leoacevedo.com/userscripts/coursera-downloader
 // @description Download Coursera resources(mp4, pdf, ppt, txt, srt...) from a lecture page, and download reading pages. A download button should appear at the top of the page
+// @match       https://www.coursera.org/learn/*/exam/*/*
 // @match       https://www.coursera.org/learn/*/home/welcome
 // @match       https://www.coursera.org/learn/*/home/week/*
 // @match       https://www.coursera.org/learn/*/lecture/*/*
@@ -48,6 +49,7 @@
             const weekPageRegex = /^https:\/\/www.coursera.org\/learn\/[^/]+\/home\/week\/\d+$/
             const videoPageRegex = /^https:\/\/www.coursera.org\/learn\/[^/]+\/lecture\/\w+\/[\w-]+$/
             const readingPageRegex = /^https:\/\/www.coursera.org\/learn\/[^/]+\/supplement\/\w+\/[\w-]+$/
+            const examPageRegex = /^https:\/\/www.coursera.org\/learn\/[^/]+\/exam\/\w+\/[\w-]+$/
             const url = window.location.href
             if (videoPageRegex.test(url)) {
                 videoPage()
@@ -57,6 +59,8 @@
                 weekPage()
             } else if (homePageRegex.test(url)) {
                 homePage()
+            } else if (examPageRegex.test(url)) {
+                examPage()
             } else {
                 alert("URL mismatch")
             }
@@ -70,12 +74,37 @@
             link.click()
         }
 
+        function goToNext() {
+            const navLinks = document.querySelectorAll(".nav-link.dim.body-1-text")
+
+            if (navLinks && navLinks.length > 1) {
+                const next = navLinks[1]
+                next.click()
+                return true
+            } else {
+                return false
+            }
+        }
+
         function getBreadcrumbs() {
             return document.querySelectorAll(".breadcrumb-title")
         }
 
         function getGroupName() {
             return getBreadcrumbs()[1].querySelector("span").innerText
+        }
+
+        function populateLessons() {
+            const lessonDivs = document.querySelectorAll(".rc-CollapsibleLesson")
+            const lessonNames = lessonDivs.map((div) => div.querySelector("button").innerText)
+            
+            for (var i = 0, I = lessonDivs.length; i < I; i++) {
+                lessons.push({
+                    name: lessonNames[i],
+                    div: lessonDivs[i]
+                })
+            }
+
         }
 
         function getLectureName() {
@@ -99,6 +128,7 @@
                 var lectures = lessons[i].div.querySelector(".item-list")
                 if (lectures != null) {
                     lectures = lectures.innerText
+                    console.log("Is " + lectureName + " inside of " + lectures)
                     if (lectures.contains(lectureName)) {
                         return lessons[i].name
                     }
@@ -131,6 +161,10 @@
                 result = "0" + result
             }
             return result
+        }
+
+        function formatLectureName(str) {
+            return str.replace(/\(\d+:\d*:?\d*\)\s*$/, "").trim()
         }
 
         function videoPage() {
@@ -212,9 +246,11 @@
 
             function downloadResourcesFrom(index) {
                 const resource = downloadResources[index]
-                const goToNext = () => {
+                const downloadNextResource = () => {
                     if (index + 1 < downloadResources.length) {
                         downloadResourcesFrom(index + 1)
+                    } else {
+                        goToNext()
                     }
                 }
 
@@ -223,20 +259,16 @@
                     url: resource.url,
                     responseType: "blob",
                     overrideMimeType: OCTET_STREAM, // force browser to download stuff rather than opening a tab
-                    onerror: goToNext,
+                    onerror: downloadNextResource,
                     onload: (result) => {
                         try {
                             const blob = result.response
                             downloadBlob(blob, resource.fileName)
                         } finally {
-                            goToNext()
+                            downloadNextResource()
                         }
                     }
                 })
-            }
-
-            function formatLectureName(str) {
-                return str.replace(/\(\d+:\d*:?\d*\)\s*$/, "").trim()
             }
 
             function guessResourceExtension(url) {
@@ -250,15 +282,7 @@
                 // AJAX-based UI takes some time to generate. Wait for it
                 if (injectButton()) {
                     setTimeout(() => { getDownloadResources() }, 2000)
-                    const lessonDivs = document.querySelectorAll(".rc-CollapsibleLesson")
-                    const lessonNames = lessonDivs.map((div) => div.querySelector("button").innerText)
-                    
-                    for (var i = 0, I = lessonDivs.length; i < I; i++) {
-                        lessons.push({
-                            name: lessonNames[i],
-                            div: lessonDivs[i]
-                        })
-                    }
+                    populateLessons()
                 } else {
                     setTimeout(doTheJob, 1000)
                 }
@@ -283,9 +307,10 @@
                 const fileName = formatFileName(
                     getGroupName() + " - " + 
                     lessonNumber + " - " + lessonName + " - " + 
-                    lectureNumber + " - " + lectureName + " - " + ".html"
+                    lectureNumber + " - " + lectureName + ".html"
                 )
                 downloadBlob(blob, fileName)
+                goToNext()
             }
 
             function injectButton(textContainer) {
@@ -293,7 +318,6 @@
                 downloadButton.innerHTML = "<span>Download reading</span>"
                 downloadButton.disabled = false
                 downloadButton.onclick = () => { downloadText(textContainer) }
-                downloadText(textContainer)
             }
 
             function doTheJob() {
@@ -301,6 +325,8 @@
                 const textContainer = document.querySelector(containerSelector) 
                 if (textContainer) {
                     injectButton(textContainer)
+                    populateLessons()
+                    downloadText(textContainer)
                 } else {
                     setTimeout(doTheJob, 1000)      
                 }
@@ -345,6 +371,16 @@
                 }
             }
             setTimeout(doTheJob, 3000)
+        }
+
+        function examPage() {
+            function doTheJob() {
+                // AJAX-based UI takes some time to generate. Wait for it
+                if (!goToNext()) {
+                    setTimeout(doTheJob, 1000)
+                }
+            }
+            doTheJob()
         }
 
         main()
