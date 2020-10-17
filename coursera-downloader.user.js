@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        Coursera Downloader
 // @author      Leonardo Acevedo (leo.acevedo@gmail.com)
-// @namespace   https://leoacevedo.com/userscripts/coursera-downloader
+// @namespace   https://raw.githubusercontent.com/leoacevedo/coursera-downloader/master/coursera-downloader.user.js
 // @description Download Coursera resources(mp4, pdf, ppt, txt, srt...) from a lecture page, and download reading pages. A download button should appear at the top of the page
 // @match       https://www.coursera.org/learn/*/exam/*/*
 // @match       https://www.coursera.org/learn/*/home/welcome
